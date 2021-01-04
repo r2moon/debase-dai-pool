@@ -67,7 +67,7 @@ contract DaiLpPool is Ownable {
     mapping (uint256 => uint256) oldAccDaiPerMphPerDeposit;
     uint256 depositLength;
     uint256 fee;
-    address devAddr;
+    address treasury;
 
     uint256 public periodFinish;
     uint256 public debaseRewardRate;
@@ -106,11 +106,11 @@ contract DaiLpPool is Ownable {
         IReward _mphStakePool,
         uint256 _lockPeriod,
         uint256 _fee,
-        address _devAddr,
+        address _treasury,
         uint256 _debaseRewardPercentage,
         uint256 _blockDuration
     ) public Ownable() {
-        require (_devAddr != address(0), 'Invalid addr');
+        require (_treasury != address(0), 'Invalid addr');
         debaseDaiPair = _debaseDaiPair;
         dai = _dai;
         debase = _debase;
@@ -120,7 +120,7 @@ contract DaiLpPool is Ownable {
         mphStakePool = _mphStakePool;
         lockPeriod= _lockPeriod;
         fee = _fee;
-        devAddr = _devAddr;
+        treasury = _treasury;
         debaseRewardPercentage = _debaseRewardPercentage;
         blockDuration = _blockDuration;
     }
@@ -232,8 +232,8 @@ contract DaiLpPool is Ownable {
         dai.transfer(depositInfo.owner, depositInfo.daiAmount.add(totalDaiReward.sub(daiFee)));
         mph.transfer(depositInfo.owner, mphReward.sub(mphFee));
 
-        dai.transfer(devAddr, daiFee);
-        mph.transfer(devAddr, mphFee);
+        dai.transfer(treasury, daiFee);
+        mph.transfer(treasury, mphFee);
     }
 
     function _emergencyWithdrawDai(uint256 depositId, uint256 fundingId) internal {
@@ -242,7 +242,7 @@ contract DaiLpPool is Ownable {
         uint mphStakingDaiReward = _unstakeMph(depositId);
         daiFixedPool.earlyWithdraw(depositInfo.daiDepositId, fundingId);
         dai.transfer(depositInfo.owner, depositInfo.daiAmount);
-        dai.transfer(devAddr, mphStakingDaiReward);
+        dai.transfer(treasury, mphStakingDaiReward);
     }
 
     function withdraw(uint256 depositId, uint256 fundingId)
@@ -316,9 +316,9 @@ contract DaiLpPool is Ownable {
         fee = _fee;
     }
 
-    function setDevAddr(address _devAddr) external onlyOwner {
-        require (_devAddr != address(0), 'Invalid addr');
-        devAddr = _devAddr;
+    function setTreasury(address _treasury) external onlyOwner {
+        require (_treasury != address(0), 'Invalid addr');
+        treasury = _treasury;
     }
 
     function setLpLimit(uint256 _lpLimit) external onlyOwner {
@@ -400,7 +400,7 @@ contract DaiLpPool is Ownable {
                 debase.totalSupply().mul(reward).div(10**18);
 
             debase.safeTransfer(deposits[depositId].owner, deposits[depositId].debaseGonAmount.div(_gonsPerFragment()));
-            debase.safeTransfer(devAddr, rewardToClaim);
+            debase.safeTransfer(treasury, rewardToClaim);
             debaseRewardDistributed = debaseRewardDistributed.add(reward);
         }
     }
