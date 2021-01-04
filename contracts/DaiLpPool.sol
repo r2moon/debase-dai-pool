@@ -305,7 +305,6 @@ contract DaiLpPool is Ownable {
         DepositInfo storage depositInfo = deposits[depositId];
         require (depositInfo.owner == msg.sender, 'not owner');
         require (depositInfo.withdrawed == false, 'withdrawed already');
-        require (depositInfo.maturationTimestamp <= block.timestamp, 'still locked');
 
         _emergencyWithdrawDai(depositId, fundingId);
         _emergencyWithdrawDebase(depositId);
