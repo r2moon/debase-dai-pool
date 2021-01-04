@@ -15,6 +15,7 @@ contract DaiLpPool is Ownable {
 
     event onDeposit(address indexed user, uint256 amount, uint256 maturationTimestamp, uint256 depositId);
     event onWithdraw(address indexed user, uint256 amount, uint256 depositId);
+    event onEmergencyWithdraw(address indexed user, uint256 amount, uint256 depositId);
 
     event LogSetDebaseRewardPercentage(uint256 debaseRewardPercentage_);
     event LogDebaseRewardIssued(uint256 rewardIssued, uint256 rewardsFinishBy);
@@ -312,7 +313,7 @@ contract DaiLpPool is Ownable {
         lpDeposits[msg.sender] = lpDeposits[msg.sender].sub(depositInfo.amount);
         totalLpLocked = totalLpLocked.sub(depositInfo.amount);
 
-        emit onWithdraw(msg.sender, depositInfo.amount, depositId);
+        emit onEmergencyWithdraw(msg.sender, depositInfo.amount, depositId);
     }
 
     /**
