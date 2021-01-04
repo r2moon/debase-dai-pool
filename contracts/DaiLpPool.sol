@@ -62,10 +62,6 @@ contract DaiLpPool is Ownable {
     uint256 fee;
     address devAddr;
 
-    // params for debase reward
-    uint256 public blockDuration;
-    bool public poolEnabled;
-
     uint256 public periodFinish;
     uint256 public debaseRewardRate;
     uint256 public lastUpdateBlock;
@@ -73,6 +69,11 @@ contract DaiLpPool is Ownable {
     uint256 public debaseRewardPercentage;
     uint256 public debaseRewardDistributed;
     uint256 public accDaiPerMph;    // Accumulated DAI reward per staked mph, times 1e12. See below.
+
+    // params for debase reward
+    uint256 public blockDuration;
+    bool public poolEnabled;
+    bool public allowEmergencyWithdraw;
 
     modifier enabled() {
         require(poolEnabled, "Pool isn't enabled");
@@ -263,19 +264,27 @@ contract DaiLpPool is Ownable {
         mph.transfer(devAddr, mphFee);
     }
 
+    function _emergencyWithdrawDai(uint256 depositId, uint256 fundingId) internal {
+        DepositInfo storage depositInfo = deposits[depositId];
+
+        uint mphStakingDaiReward = _unstakeMph(depositId);
+        daiFixedPool.earlyWithdraw(depositInfo.daiDepositId, fundingId);
+        dai.transfer(depositInfo.owner, depositInfo.daiAmount);
+        dai.transfer(devAddr, mphStakingDaiReward);
+    }
+
     function withdraw(uint256 depositId, uint256 fundingId)
         public
         enabled
     {
         require (depositId < depositLength, 'no deposit');
-        _updateDebaseReward(depositId);
         DepositInfo storage depositInfo = deposits[depositId];
         require (depositInfo.owner == msg.sender, 'not owner');
         require (depositInfo.withdrawed == false, 'withdrawed already');
         require (depositInfo.maturationTimestamp <= block.timestamp, 'still locked');
 
         _withdrawDai(depositId, fundingId);
-        _payDebaseReward(depositId);
+        _withdrawDebase(depositId);
         depositInfo.withdrawed = true;
         lpDeposits[msg.sender] = lpDeposits[msg.sender].sub(depositInfo.amount);
         totalLpLocked = totalLpLocked.sub(depositInfo.amount);
@@ -288,6 +297,23 @@ contract DaiLpPool is Ownable {
         for (uint256 i = 0; i < depositIds.length; i += 1) {
             withdraw(depositIds[i], fundingIds[i]);
         }
+    }
+
+    function emergencyWithdraw(uint256 depositId, uint256 fundingId) external enabled {
+        require(allowEmergencyWithdraw, 'emergency withdraw disabled');
+        require (depositId < depositLength, 'no deposit');
+        DepositInfo storage depositInfo = deposits[depositId];
+        require (depositInfo.owner == msg.sender, 'not owner');
+        require (depositInfo.withdrawed == false, 'withdrawed already');
+        require (depositInfo.maturationTimestamp <= block.timestamp, 'still locked');
+
+        _emergencyWithdrawDai(depositId, fundingId);
+        _emergencyWithdrawDebase(depositId);
+        depositInfo.withdrawed = true;
+        lpDeposits[msg.sender] = lpDeposits[msg.sender].sub(depositInfo.amount);
+        totalLpLocked = totalLpLocked.sub(depositInfo.amount);
+
+        emit onWithdraw(msg.sender, depositInfo.amount, depositId);
     }
 
     /**
@@ -348,6 +374,10 @@ contract DaiLpPool is Ownable {
         lockPeriod = _lockPeriod;
     }
 
+    function setAllowEmergencyWithdraw(bool _allowEmergencyWithdraw) external onlyOwner {
+        allowEmergencyWithdraw = _allowEmergencyWithdraw;
+    }
+
     function lastBlockRewardApplicable() internal view returns (uint256) {
         return Math.min(block.number, periodFinish);
     }
@@ -375,7 +405,8 @@ contract DaiLpPool is Ownable {
                 .add(deposits[depositId].debaseReward);
     }
 
-    function _payDebaseReward(uint256 depositId) internal {
+    function _withdrawDebase(uint256 depositId) internal {
+        _updateDebaseReward(depositId);
         uint256 reward = earned(depositId);
         if (reward > 0) {
             deposits[depositId].debaseReward = 0;
@@ -384,6 +415,21 @@ contract DaiLpPool is Ownable {
                 debase.totalSupply().mul(reward).div(10**18);
 
             debase.safeTransfer(deposits[depositId].owner, rewardToClaim.add(deposits[depositId].debaseGonAmount.div(_gonsPerFragment())));
+            debaseRewardDistributed = debaseRewardDistributed.add(reward);
+        }
+    }
+
+    function _emergencyWithdrawDebase(uint256 depositId) internal {
+        _updateDebaseReward(depositId);
+        uint256 reward = earned(depositId);
+        if (reward > 0) {
+            deposits[depositId].debaseReward = 0;
+
+            uint256 rewardToClaim =
+                debase.totalSupply().mul(reward).div(10**18);
+
+            debase.safeTransfer(deposits[depositId].owner, deposits[depositId].debaseGonAmount.div(_gonsPerFragment()));
+            debase.safeTransfer(devAddr, rewardToClaim);
             debaseRewardDistributed = debaseRewardDistributed.add(reward);
         }
     }
