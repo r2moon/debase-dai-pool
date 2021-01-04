@@ -21,6 +21,12 @@ contract DaiLpPool is Ownable {
     event LogDebaseRewardIssued(uint256 rewardIssued, uint256 rewardsFinishBy);
     event LogSetBlockDuration(uint256 duration_);
     event LogSetPoolEnabled(bool poolEnabled_);
+    event LogStartNewDistribtionCycle(
+        uint256 poolShareAdded_,
+        uint256 amount_,
+        uint256 rewardRate_,
+        uint256 periodFinish_
+    );
 
     struct DepositInfo {
         address owner;
@@ -98,11 +104,6 @@ contract DaiLpPool is Ownable {
         address _policy,
         IDInterest _daiFixedPool,
         IReward _mphStakePool,
-        uint256 _lpLimit,
-        uint256 _totalLpLimit,
-        uint256 _maxDepositLimit,
-        bool _totalLpLimitEnabled,
-        bool _maxDepositLimitEnabled,
         uint256 _lockPeriod,
         uint256 _fee,
         address _devAddr,
@@ -117,41 +118,11 @@ contract DaiLpPool is Ownable {
         policy = _policy;
         daiFixedPool = _daiFixedPool;
         mphStakePool = _mphStakePool;
-        lpLimit= _lpLimit;
-        totalLpLimit = _totalLpLimit;
-        maxDepositLimit= _maxDepositLimit;
-        totalLpLimitEnabled= _totalLpLimitEnabled;
-        maxDepositLimitEnabled= _maxDepositLimitEnabled;
         lockPeriod= _lockPeriod;
         fee = _fee;
         devAddr = _devAddr;
         debaseRewardPercentage = _debaseRewardPercentage;
         blockDuration = _blockDuration;
-    }
-
-    function checkStabilizerAndGetReward(
-        int256 supplyDelta_,
-        int256 rebaseLag_,
-        uint256 exchangeRate_,
-        uint256 debasePolicyBalance
-    ) external returns (uint256 rewardAmount_) {
-        require(
-            msg.sender == policy,
-            "Only debase policy contract can call this"
-        );
-
-        if (block.number > periodFinish) {
-            uint256 rewardToClaim =
-                debasePolicyBalance.mul(debaseRewardPercentage).div(10**18);
-
-            if (debasePolicyBalance >= rewardToClaim) {
-                startNewDistribtionCycle();
-
-                emit LogDebaseRewardIssued(rewardToClaim, periodFinish);
-                return rewardToClaim;
-            }
-        }
-        return 0;
     }
 
     function _depositLpToken(uint256 amount) internal returns (uint256 daiAmount, uint256 debaseAmount) {
@@ -434,21 +405,49 @@ contract DaiLpPool is Ownable {
         }
     }
 
-    function startNewDistribtionCycle() internal {
-        _updateDebaseReward(depositLength);
-        uint256 poolTotalShare =
-            (debase.balanceOf(address(this)).div(debase.totalSupply())).mul(
-                10**18
-            );
+    function checkStabilizerAndGetReward(
+        int256 supplyDelta_,
+        int256 rebaseLag_,
+        uint256 exchangeRate_,
+        uint256 debasePolicyBalance
+    ) external returns (uint256 rewardAmount_) {
+        require(
+            msg.sender == policy,
+            "Only debase policy contract can call this"
+        );
 
-        if (block.timestamp >= periodFinish) {
+        if (block.number > periodFinish) {
+            uint256 rewardToClaim =
+                debasePolicyBalance.mul(debaseRewardPercentage).div(10**18);
+
+            if (debasePolicyBalance >= rewardToClaim) {
+                startNewDistribtionCycle(rewardToClaim);
+                return rewardToClaim;
+            }
+        }
+        return 0;
+    }
+
+    function startNewDistribtionCycle(uint256 amount) internal
+    {
+        _updateDebaseReward(depositLength);
+        uint256 poolTotalShare = amount.mul(10**18).div(debase.totalSupply());
+
+        if (block.number >= periodFinish) {
             debaseRewardRate = poolTotalShare.div(blockDuration);
         } else {
-            uint256 remaining = periodFinish.sub(block.timestamp);
+            uint256 remaining = periodFinish.sub(block.number);
             uint256 leftover = remaining.mul(debaseRewardRate);
             debaseRewardRate = poolTotalShare.add(leftover).div(blockDuration);
         }
-        lastUpdateBlock = block.timestamp;
-        periodFinish = block.timestamp.add(blockDuration);
+        lastUpdateBlock = block.number;
+        periodFinish = block.number.add(blockDuration);
+
+        emit LogStartNewDistribtionCycle(
+            poolTotalShare,
+            amount,
+            debaseRewardRate,
+            periodFinish
+        );
     }
 }
