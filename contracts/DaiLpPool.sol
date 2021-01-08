@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./interfaces/IUniswapV2Pair.sol";
 import "./interfaces/IDInterest.sol";
 import "./interfaces/IReward.sol";
+import "./interfaces/IVesting.sol";
 
 contract DaiLpPool is Ownable {
     using SafeMath for uint256;
@@ -48,6 +49,7 @@ contract DaiLpPool is Ownable {
     IUniswapV2Pair public debaseDaiPair;
     IDInterest public daiFixedPool;
     IReward public mphStakePool;
+    IVesting public mphVesting;
     IERC20 public dai;
     IERC20 public debase;
     IERC20 public mph;
@@ -64,7 +66,7 @@ contract DaiLpPool is Ownable {
 
     mapping (uint256 => DepositInfo) public deposits;
     mapping (address => uint256) public lpDeposits;
-    mapping (uint256 => uint256) oldAccDaiPerMphPerDeposit;
+    mapping (uint256 => uint256) daiOffsetForMphStaking;   // DAI reward offset, times 1e12.
     uint256 depositLength;
     uint256 fee;
     address treasury;
@@ -75,7 +77,8 @@ contract DaiLpPool is Ownable {
     uint256 public debaseRewardPerTokenStored;
     uint256 public debaseRewardPercentage;
     uint256 public debaseRewardDistributed;
-    uint256 public accDaiPerMph;    // Accumulated DAI reward per staked mph, times 1e12. See below.
+    uint256 public accDaiPerMph;    // Accumulated DAI reward per staked mph, times 1e12.
+    uint256 firstVestIdx;
 
     // params for debase reward
     uint256 public blockDuration;
@@ -104,6 +107,7 @@ contract DaiLpPool is Ownable {
         address _policy,
         IDInterest _daiFixedPool,
         IReward _mphStakePool,
+        IVesting _mphVesting,
         uint256 _lockPeriod,
         uint256 _fee,
         address _treasury,
@@ -118,6 +122,7 @@ contract DaiLpPool is Ownable {
         policy = _policy;
         daiFixedPool = _daiFixedPool;
         mphStakePool = _mphStakePool;
+        mphVesting = _mphVesting;
         lockPeriod= _lockPeriod;
         fee = _fee;
         treasury = _treasury;
@@ -138,13 +143,10 @@ contract DaiLpPool is Ownable {
         debaseAmount = debaseBalance.sub(debaseOldBalance);
     }
 
-    function _depositDai(uint daiAmount) internal returns (uint256 mphReward, uint256 daiDepositId, uint256 maturationTimestamp) {
-        uint mphOldBalance = mph.balanceOf(address(this));
+    function _depositDai(uint daiAmount) internal returns (uint256 daiDepositId, uint256 maturationTimestamp) {
         maturationTimestamp = block.timestamp.add(lockPeriod);
         daiFixedPool.deposit(daiAmount, maturationTimestamp);
         daiDepositId = daiFixedPool.depositsLength();
-        uint mphBalance = mph.balanceOf(address(this));
-        mphReward = mphBalance.sub(mphOldBalance);
     }
 
     function _updateMphReward() internal {
@@ -157,8 +159,7 @@ contract DaiLpPool is Ownable {
             .div(mphStakePool.balanceOf(address(this))));
     }
 
-    function _stakeMph(uint mphReward) internal returns (uint oldAccDaiPerMph) {
-        oldAccDaiPerMph = accDaiPerMph;
+    function _stakeMph(uint mphReward) internal {
         _updateMphReward();
         mphStakePool.stake(mphReward);
     }
@@ -166,10 +167,28 @@ contract DaiLpPool is Ownable {
     function _unstakeMph(uint depositId) internal returns (uint daiReward) {
         _updateMphReward();
         daiReward = accDaiPerMph
-            .sub(oldAccDaiPerMphPerDeposit[depositId])
             .mul(deposits[depositId].mphReward)
+            .sub(daiOffsetForMphStaking[depositId])
             .div(1e12);
         mphStakePool.withdraw(deposits[depositId].mphReward);
+    }
+
+    function _withdrawMphVested() internal {
+        uint256 totalMphVested = 0;
+        for (uint256 depositId = firstVestIdx; depositId < depositLength; depositId += 1) {
+            uint256 vested = mphVesting.withdrawVested(address(this), depositId);
+            if (vested > 0) {
+                totalMphVested = totalMphVested.add(vested);
+                deposits[depositId].mphReward = deposits[depositId].mphReward.add(vested);
+                daiOffsetForMphStaking[depositId] = daiOffsetForMphStaking[depositId].add(accDaiPerMph.mul(vested));
+            }
+            if (block.timestamp >= deposits[depositId].maturationTimestamp) {
+                firstVestIdx = depositId.add(1);
+            }
+        }
+        if (totalMphVested > 0) {
+            _stakeMph(totalMphVested);
+        }
     }
 
     function deposit(uint256 amount)
@@ -181,12 +200,12 @@ contract DaiLpPool is Ownable {
         require(maxDepositLimitEnabled == false || lpDeposits[msg.sender].add(amount) <= maxDepositLimit, 'to much deposit for this user');
 
         (uint daiAmount, uint debaseAmount) = _depositLpToken(amount);
-        (uint mphReward, uint daiDepositId, uint maturationTimestamp) = _depositDai(daiAmount);
+        (uint daiDepositId, uint maturationTimestamp) = _depositDai(daiAmount);
 
         lpDeposits[msg.sender] = lpDeposits[msg.sender].add(amount);
         totalLpLocked = totalLpLocked.add(amount);
 
-        oldAccDaiPerMphPerDeposit[depositLength] = _stakeMph(mphReward);
+        _withdrawMphVested();
 
         deposits[depositLength] = DepositInfo({
             owner: msg.sender,
@@ -197,7 +216,7 @@ contract DaiLpPool is Ownable {
             debaseRewardPerTokenPaid: 0,
             daiDepositId: daiDepositId,
             maturationTimestamp: maturationTimestamp,
-            mphReward: mphReward,
+            mphReward: 0,
             withdrawed: false
         });
         depositLength = depositLength.add(1);
@@ -245,35 +264,43 @@ contract DaiLpPool is Ownable {
         dai.transfer(treasury, mphStakingDaiReward);
     }
 
-    function withdraw(uint256 depositId, uint256 fundingId)
-        public
+    function _withdraw(address user, uint256 depositId, uint256 fundingId)
+        internal
         enabled
     {
         require (depositId < depositLength, 'no deposit');
         DepositInfo storage depositInfo = deposits[depositId];
-        require (depositInfo.owner == msg.sender, 'not owner');
+        require (depositInfo.owner == user, 'not owner');
         require (depositInfo.withdrawed == false, 'withdrawed already');
         require (depositInfo.maturationTimestamp <= block.timestamp, 'still locked');
 
         _withdrawDai(depositId, fundingId);
         _withdrawDebase(depositId);
         depositInfo.withdrawed = true;
-        lpDeposits[msg.sender] = lpDeposits[msg.sender].sub(depositInfo.amount);
+        lpDeposits[user] = lpDeposits[user].sub(depositInfo.amount);
         totalLpLocked = totalLpLocked.sub(depositInfo.amount);
 
-        emit onWithdraw(msg.sender, depositInfo.amount, depositId);
+        emit onWithdraw(user, depositInfo.amount, depositId);
+    }
+
+    function withdraw(uint256 depositId, uint256 fundingId) external
+    {
+        _withdrawMphVested();
+        _withdraw(msg.sender, depositId, fundingId);
     }
 
     function multiWithdraw(uint256[] calldata depositIds, uint256[] calldata fundingIds) external {
         require(depositIds.length == fundingIds.length, 'incorrect length');
+        _withdrawMphVested();
         for (uint256 i = 0; i < depositIds.length; i += 1) {
-            withdraw(depositIds[i], fundingIds[i]);
+            _withdraw(msg.sender, depositIds[i], fundingIds[i]);
         }
     }
 
     function emergencyWithdraw(uint256 depositId, uint256 fundingId) external enabled {
         require(allowEmergencyWithdraw, 'emergency withdraw disabled');
         require (depositId < depositLength, 'no deposit');
+        _withdrawMphVested();
         DepositInfo storage depositInfo = deposits[depositId];
         require (depositInfo.owner == msg.sender, 'not owner');
         require (depositInfo.withdrawed == false, 'withdrawed already');
@@ -342,6 +369,7 @@ contract DaiLpPool is Ownable {
     }
 
     function setLockPeriod(uint256 _lockPeriod) external onlyOwner {
+        require (_lockPeriod > 0, 'invalid lock period');
         lockPeriod = _lockPeriod;
     }
 
