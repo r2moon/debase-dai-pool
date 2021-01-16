@@ -1,0 +1,18 @@
+{
+  "dai": "0x6b175474e89094c44da98b954eedeac495271d0f",
+  "debase": "0x9248c485b0b80f76da451f167a8db30f33c70907",
+  "debaseDaiPair": "0xE98f89a2B3AeCDBE2118202826478Eb02434459A",
+  "mph": "0x8888801af4d980682e47f1a9036e589479e835c5",
+  "policy": "0x989Edd2e87B1706AB25b2E8d9D9480DE3Cc383eD",
+  "daiFixedPool": "0x35966201A7724b952455B73A36C8846D8745218e",
+  "mphStakingPool": "0x98df8D9E56b51e4Ea8AA9b57F8A5Df7A044234e1",
+  "mphVesting": "0x8943eb8F104bCf826910e7d2f4D59edfe018e0e7",
+  "lockPeriod": 2592000,
+  "fee": 30,
+  "treasury": "",
+  "debaseRewardPercentage": 0,
+  "blockDuration": 0,
+  "uniFactory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+  "uniRoute02": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+  "weth": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+}

@@ -5,12 +5,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/IUniswapV2Pair.sol";
 import "./interfaces/IDInterest.sol";
 import "./interfaces/IReward.sol";
 import "./interfaces/IVesting.sol";
 
-contract DaiLpPool is Ownable {
+contract DaiLpPool is Ownable, IERC721Receiver {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -123,7 +124,7 @@ contract DaiLpPool is Ownable {
         daiFixedPool = _daiFixedPool;
         mphStakePool = _mphStakePool;
         mphVesting = _mphVesting;
-        lockPeriod= _lockPeriod;
+        lockPeriod = _lockPeriod;
         fee = _fee;
         treasury = _treasury;
         debaseRewardPercentage = _debaseRewardPercentage;
@@ -131,10 +132,9 @@ contract DaiLpPool is Ownable {
     }
 
     function _depositLpToken(uint256 amount) internal returns (uint256 daiAmount, uint256 debaseAmount) {
-        debaseDaiPair.transferFrom(msg.sender, address(this), amount);
         uint daiOldBalance = dai.balanceOf(address(this));
         uint debaseOldBalance = debase.balanceOf(address(this));
-        debaseDaiPair.transfer(address(debaseDaiPair), amount);
+        debaseDaiPair.transferFrom(msg.sender, address(debaseDaiPair), amount);
         debaseDaiPair.burn(address(this));
         uint daiBalance = dai.balanceOf(address(this));
         uint debaseBalance = debase.balanceOf(address(this));
@@ -145,11 +145,16 @@ contract DaiLpPool is Ownable {
 
     function _depositDai(uint daiAmount) internal returns (uint256 daiDepositId, uint256 maturationTimestamp) {
         maturationTimestamp = block.timestamp.add(lockPeriod);
+        dai.approve(address(daiFixedPool), daiAmount);
         daiFixedPool.deposit(daiAmount, maturationTimestamp);
         daiDepositId = daiFixedPool.depositsLength();
     }
 
     function _updateMphReward() internal {
+        uint stakingBalance = mphStakePool.balanceOf(address(this));
+        if (stakingBalance == 0) {
+            return;
+        }
         uint daiOldBalance = dai.balanceOf(address(this));
         mphStakePool.getReward();
         uint daiBalance = dai.balanceOf(address(this));
@@ -161,6 +166,7 @@ contract DaiLpPool is Ownable {
 
     function _stakeMph(uint mphReward) internal {
         _updateMphReward();
+        mph.approve(address(mphStakePool), mphReward);
         mphStakePool.stake(mphReward);
     }
 
@@ -237,7 +243,9 @@ contract DaiLpPool is Ownable {
         uint mphStakingDaiReward = _unstakeMph(depositId);
 
         uint mphOldBalance = mph.balanceOf(address(this));
+        mph.approve(address(daiFixedPool.mphMinter()), mphOldBalance);
         daiFixedPool.withdraw(depositInfo.daiDepositId, fundingId);
+        mph.approve(address(daiFixedPool.mphMinter()), 0);
         uint mphBalance = mph.balanceOf(address(this));
 
         uint daiBalance = dai.balanceOf(address(this));
@@ -477,5 +485,9 @@ contract DaiLpPool is Ownable {
             debaseRewardRate,
             periodFinish
         );
+    }
+
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external override returns (bytes4) {
+        return 0x150b7a02;
     }
 }

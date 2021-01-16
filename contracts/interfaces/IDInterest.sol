@@ -5,4 +5,5 @@ interface IDInterest {
     function depositsLength() external view returns (uint256);
     function withdraw(uint256 depositID, uint256 fundingID) external;
     function earlyWithdraw(uint256 depositID, uint256 fundingID) external;
+    function mphMinter() external view returns (address);
 }
