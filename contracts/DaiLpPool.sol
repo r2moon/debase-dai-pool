@@ -84,6 +84,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     uint256 public depositLength;
     uint256 public daiFee = 30;
     uint256 public mphFee = 30;
+    uint256 public totalMphStaked;
     address public treasury;
 
     uint256 public periodFinish;
@@ -164,8 +165,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     }
 
     function _updateMphReward() internal {
-        uint stakingBalance = mphStakePool.balanceOf(address(this));
-        if (stakingBalance == 0) {
+        if (totalMphStaked == 0) {
             return;
         }
         uint daiOldBalance = dai.balanceOf(address(this));
@@ -174,13 +174,14 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         uint daiReward = daiBalance.sub(daiOldBalance);
         accDaiPerMph = accDaiPerMph
             .add(daiReward.mul(1e12)
-            .div(mphStakePool.balanceOf(address(this))));
+            .div(totalMphStaked));
     }
 
     function _stakeMph(uint mphReward) internal {
         _updateMphReward();
         mph.approve(address(mphStakePool), mphReward);
         mphStakePool.stake(mphReward);
+        totalMphStaked = totalMphStaked.add(mphReward);
     }
 
     function _unstakeMph(uint depositId) internal returns (uint daiReward) {
@@ -190,6 +191,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
             .sub(daiOffsetForMphStaking[depositId])
             .div(1e12);
         mphStakePool.withdraw(deposits[depositId].mphReward);
+        totalMphStaked = totalMphStaked.sub(deposits[depositId].mphReward);
     }
 
     function _getCurrentVestingIdx() internal view returns (uint256) {
@@ -266,11 +268,11 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     function _withdrawDai(uint256 depositId, uint256 fundingId) internal {
         DepositInfo storage depositInfo = deposits[depositId];
 
-        uint daiOldBalance = dai.balanceOf(address(this));
         uint mphStakingDaiReward = _unstakeMph(depositId);
 
         uint mphOldBalance = mph.balanceOf(address(this));
         mph.approve(address(daiFixedPool.mphMinter()), mphOldBalance);
+        uint daiOldBalance = dai.balanceOf(address(this));
         daiFixedPool.withdraw(depositInfo.daiDepositId, fundingId);
         mph.approve(address(daiFixedPool.mphMinter()), 0);
         uint mphBalance = mph.balanceOf(address(this));

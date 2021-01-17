@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test-basic": "truffle test test/dai-lp-pool-basic.test.js --network development",
-    "test-mainnet": "truffle test test/dai-lp-pool-mainnet.test.js --network development",
+    "test-basic": "truffle test test/1_dai-lp-pool-basic.test.js --network development",
+    "test-mock": "truffle test test/2_dai-lp-pool-mock.test.js --network development",
+    "test-mainnet": "truffle test test/3_dai-lp-pool-mainnet.test.js --network development",
     "test": "truffle test --network development"
   },
   "author": "",
