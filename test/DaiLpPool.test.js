@@ -94,6 +94,5 @@ contract('DaiLpPool', (accounts) => {
 
     await time.increase(config.lockPeriod);
     await daiLpPool.withdraw(0, 0, {from: accounts[1]});
-    console.log((await mph.balanceOf(daiLpPool.address)).toString());
   });
 });

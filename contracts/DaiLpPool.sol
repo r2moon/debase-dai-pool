@@ -1,4 +1,5 @@
 pragma solidity >=0.6.6;
+pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -9,7 +10,19 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/IUniswapV2Pair.sol";
 import "./interfaces/IDInterest.sol";
 import "./interfaces/IReward.sol";
-import "./interfaces/IVesting.sol";
+
+struct Vest {
+    uint256 amount;
+    uint256 vestPeriodInSeconds;
+    uint256 creationTimestamp;
+    uint256 withdrawnAmount;
+}
+
+interface IVesting {
+    function withdrawVested(address account, uint256 vestIdx) external returns (uint256);
+    function getVestWithdrawableAmount(address account, uint256 vestIdx) external view returns (uint256);
+    function accountVestList(address account, uint256 vestIdx) external view returns (Vest memory);
+}
 
 contract DaiLpPool is Ownable, IERC721Receiver {
     using SafeMath for uint256;
@@ -39,6 +52,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         uint256 debaseRewardPerTokenPaid;
         uint256 daiDepositId;
         uint256 mphReward;
+        uint256 mphVestingIdx;
         uint256 maturationTimestamp;
         bool withdrawed;
     }
@@ -68,9 +82,9 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     mapping (uint256 => DepositInfo) public deposits;
     mapping (address => uint256) public lpDeposits;
     mapping (uint256 => uint256) daiOffsetForMphStaking;   // DAI reward offset, times 1e12.
-    uint256 depositLength;
-    uint256 fee;
-    address treasury;
+    uint256 public depositLength;
+    uint256 public fee = 30;
+    address public treasury;
 
     uint256 public periodFinish;
     uint256 public debaseRewardRate;
@@ -78,8 +92,9 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     uint256 public debaseRewardPerTokenStored;
     uint256 public debaseRewardPercentage;
     uint256 public debaseRewardDistributed;
-    uint256 public accDaiPerMph;    // Accumulated DAI reward per staked mph, times 1e12.
-    uint256 firstVestIdx;
+    uint256 accDaiPerMph;    // Accumulated DAI reward per staked mph, times 1e12.
+    uint256 lastVestingIdx;
+    uint256 firstDepositForVesting;
 
     // params for debase reward
     uint256 public blockDuration;
@@ -110,7 +125,6 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         IReward _mphStakePool,
         IVesting _mphVesting,
         uint256 _lockPeriod,
-        uint256 _fee,
         address _treasury,
         uint256 _debaseRewardPercentage,
         uint256 _blockDuration
@@ -125,7 +139,6 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         mphStakePool = _mphStakePool;
         mphVesting = _mphVesting;
         lockPeriod = _lockPeriod;
-        fee = _fee;
         treasury = _treasury;
         debaseRewardPercentage = _debaseRewardPercentage;
         blockDuration = _blockDuration;
@@ -179,17 +192,27 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         mphStakePool.withdraw(deposits[depositId].mphReward);
     }
 
+    function _getCurrentVestingIdx() internal view returns (uint256) {
+        uint256 vestIdx = lastVestingIdx;
+        Vest memory vest = mphVesting.accountVestList(address(this), vestIdx);
+        while (vest.creationTimestamp < block.timestamp) {
+            vestIdx = vestIdx.add(1);
+            vest = mphVesting.accountVestList(address(this), vestIdx);
+        }
+        return vestIdx;
+    }
+
     function _withdrawMphVested() internal {
         uint256 totalMphVested = 0;
-        for (uint256 depositId = firstVestIdx; depositId < depositLength; depositId += 1) {
-            uint256 vested = mphVesting.withdrawVested(address(this), depositId);
+        for (uint256 depositId = firstDepositForVesting; depositId < depositLength; depositId += 1) {
+            uint256 vested = mphVesting.withdrawVested(address(this), deposits[depositId].mphVestingIdx);
             if (vested > 0) {
                 totalMphVested = totalMphVested.add(vested);
                 deposits[depositId].mphReward = deposits[depositId].mphReward.add(vested);
                 daiOffsetForMphStaking[depositId] = daiOffsetForMphStaking[depositId].add(accDaiPerMph.mul(vested));
             }
             if (block.timestamp >= deposits[depositId].maturationTimestamp) {
-                firstVestIdx = depositId.add(1);
+                firstDepositForVesting = depositId.add(1);
             }
         }
         if (totalMphVested > 0) {
@@ -213,6 +236,8 @@ contract DaiLpPool is Ownable, IERC721Receiver {
 
         _withdrawMphVested();
 
+        uint256 vestingIdx = _getCurrentVestingIdx();
+
         deposits[depositLength] = DepositInfo({
             owner: msg.sender,
             amount: amount,
@@ -223,8 +248,10 @@ contract DaiLpPool is Ownable, IERC721Receiver {
             daiDepositId: daiDepositId,
             maturationTimestamp: maturationTimestamp,
             mphReward: 0,
+            mphVestingIdx: vestingIdx,
             withdrawed: false
         });
+        lastVestingIdx = vestingIdx.add(1);
         depositLength = depositLength.add(1);
 
         _updateDebaseReward(daiDepositId);
