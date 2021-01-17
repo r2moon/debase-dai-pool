@@ -83,7 +83,8 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     mapping (address => uint256) public lpDeposits;
     mapping (uint256 => uint256) daiOffsetForMphStaking;   // DAI reward offset, times 1e12.
     uint256 public depositLength;
-    uint256 public fee = 30;
+    uint256 public daiFee = 30;
+    uint256 public mphFee = 30;
     address public treasury;
 
     uint256 public periodFinish;
@@ -280,14 +281,14 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         uint totalDaiReward = daiAmount.add(mphStakingDaiReward).sub(depositInfo.daiAmount);
 
         uint mphReward = depositInfo.mphReward.add(mphBalance).sub(mphOldBalance);
-        uint daiFee = totalDaiReward.mul(fee).div(1000);
-        uint mphFee = mphReward.mul(fee).div(1000);
+        uint daiFeeAmount = totalDaiReward.mul(daiFee).div(1000);
+        uint mphFeeAmount = mphReward.mul(mphFee).div(1000);
 
-        dai.transfer(depositInfo.owner, depositInfo.daiAmount.add(totalDaiReward.sub(daiFee)));
-        mph.transfer(depositInfo.owner, mphReward.sub(mphFee));
+        dai.transfer(depositInfo.owner, depositInfo.daiAmount.add(totalDaiReward.sub(daiFeeAmount)));
+        mph.transfer(depositInfo.owner, mphReward.sub(mphFeeAmount));
 
-        dai.transfer(treasury, daiFee);
-        mph.transfer(treasury, mphFee);
+        dai.transfer(treasury, daiFeeAmount);
+        mph.transfer(treasury, mphFeeAmount);
     }
 
     function _emergencyWithdrawDai(uint256 depositId, uint256 fundingId) internal {
@@ -374,8 +375,12 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         emit LogSetPoolEnabled(poolEnabled);
     }
 
-    function setFee(uint256 _fee) external onlyOwner {
-        fee = _fee;
+    function setDaiFee(uint256 _daiFee) external onlyOwner {
+        daiFee = _daiFee;
+    }
+
+    function setMphFee(uint256 _mphFee) external onlyOwner {
+        mphFee = _mphFee;
     }
 
     function setTreasury(address _treasury) external onlyOwner {
