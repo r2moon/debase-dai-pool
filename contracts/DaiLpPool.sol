@@ -70,7 +70,6 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     IERC20 public mph;
     address public policy;
 
-    uint256 public lpLimit;
     uint256 public maxDepositLimit;
     uint256 public totalLpLimit;
     uint256 public lockPeriod;
@@ -109,7 +108,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
 
     function _updateDebaseReward(uint256 depositId) internal {
         debaseRewardPerTokenStored = debaseRewardPerToken();
-        lastUpdateBlock = lastBlockRewardApplicable();
+        lastUpdateBlock = _lastBlockRewardApplicable();
         if (depositId < depositLength) {
             deposits[depositId].debaseReward = earned(depositId);
             deposits[depositId].debaseRewardPerTokenPaid = debaseRewardPerTokenStored;
@@ -362,7 +361,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
      * @notice Function to set reward drop period
      */
     function setBlockDuration(uint256 blockDuration_) external onlyOwner {
-        require(blockDuration >= 1);
+        require(blockDuration_ >= 1, 'invalid duration');
         blockDuration = blockDuration_;
         emit LogSetBlockDuration(blockDuration);
     }
@@ -388,12 +387,17 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         treasury = _treasury;
     }
 
-    function setLpLimit(uint256 _lpLimit) external onlyOwner {
-        lpLimit = _lpLimit;
+    function setPolicy(address _policy) external onlyOwner {
+        require (_policy != address(0), 'Invalid addr');
+        policy = _policy;
     }
 
     function setMaxDepositLimit(uint256 _maxDepositLimit) external onlyOwner {
         maxDepositLimit = _maxDepositLimit;
+    }
+
+    function setMaxDepositLimitEnabled(bool _maxDepositLimitEnabled) external onlyOwner {
+        maxDepositLimitEnabled = _maxDepositLimitEnabled;
     }
 
     function setTotalLpLimit(uint256 _totalLpLimit) external onlyOwner {
@@ -402,10 +406,6 @@ contract DaiLpPool is Ownable, IERC721Receiver {
 
     function setTotalLpLimitEnabled(bool _totalLpLimitEnabled) external onlyOwner {
         totalLpLimitEnabled = _totalLpLimitEnabled;
-    }
-
-    function setMaxDepositLimitEnabled(bool _maxDepositLimitEnabled) external onlyOwner {
-        maxDepositLimitEnabled = _maxDepositLimitEnabled;
     }
 
     function setLockPeriod(uint256 _lockPeriod) external onlyOwner {
@@ -417,7 +417,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         allowEmergencyWithdraw = _allowEmergencyWithdraw;
     }
 
-    function lastBlockRewardApplicable() internal view returns (uint256) {
+    function _lastBlockRewardApplicable() internal view returns (uint256) {
         return Math.min(block.number, periodFinish);
     }
 
@@ -427,7 +427,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         }
         return
             debaseRewardPerTokenStored.add(
-                lastBlockRewardApplicable()
+                _lastBlockRewardApplicable()
                     .sub(lastUpdateBlock)
                     .mul(debaseRewardRate)
                     .mul(10**18)

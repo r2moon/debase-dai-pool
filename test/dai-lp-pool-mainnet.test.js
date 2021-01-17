@@ -76,7 +76,6 @@ contract('DaiLpPool', (accounts) => {
       config.mphStakingPool,
       config.mphVesting,
       config.lockPeriod,
-      config.fee,
       treasury,
       config.debaseRewardPercentage,
       config.blockDuration
