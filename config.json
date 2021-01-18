@@ -11,8 +11,8 @@
   "daiFee": 30,
   "mphFee": 30,
   "treasury": "",
-  "debaseRewardPercentage": 0,
-  "blockDuration": 1,
+  "debaseRewardPercentage": "500000000000000",
+  "blockDuration": 23200,
   "uniFactory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
   "uniRoute02": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
   "weth": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"

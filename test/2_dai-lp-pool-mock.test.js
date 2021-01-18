@@ -41,6 +41,25 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
 
   let lastDepositId = 0;
 
+  const resetBalance = async () => {
+    for (let i = 1; i < 10; i += 1) {
+      const daiBal = (await dai.balanceOf(accounts[i])).toString();
+      await dai.transfer(policy, daiBal, {from: accounts[i]});
+      const debaseBal = (await debase.balanceOf(accounts[i])).toString();
+      await debase.transfer(policy, debaseBal, {from: accounts[i]});
+      const lpBal = (await daiDebaseLp.balanceOf(accounts[i])).toString();
+      await daiDebaseLp.transfer(policy, lpBal, {from: accounts[i]});
+    }
+  };
+
+  const getGonsPerFragments = async () => {
+    const MAX_UINT256 = new BN('2').pow(new BN('256')).sub(new BN('1'));
+    const INITIAL_FRAGMENTS_SUPPLY = (new BN('1000000')).mul((new BN('10')).pow(decimals));
+    const TOTAL_GONS = MAX_UINT256.sub(MAX_UINT256.mod(INITIAL_FRAGMENTS_SUPPLY));
+    const totalSupply = new BN((await debase.totalSupply()).toString());
+    return TOTAL_GONS.div(totalSupply);
+  }
+
   before('Get contract references', async () => {
     dai = await TestERC20.new((new BN('10000000')).mul((new BN('10')).pow(decimals)).toString(), "Test dai", "DAI");
     debase = await Debase.new();
@@ -149,6 +168,7 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
   describe('Test single deposit', async () => {
     before('enable pool', async () => {
       await daiLpPool.setPoolEnabled(true);
+      await resetBalance();
     });
     it('Deposit', async () => {
       let deposits = [
@@ -157,6 +177,12 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
         {lp: (new BN('7')).mul((new BN('10')).pow(decimals))},
       ]
       for (let i = 0; i < deposits.length; i += 1) {
+        let bal = (new BN('1000')).mul((new BN('10')).pow(decimals));
+        await daiLpPool.checkStabilizerAndGetReward("1", "1", "1", bal.toString())
+        let debaseReward = bal.mul(new BN(config.debaseRewardPercentage)).div((new BN('10')).pow(decimals));
+        await debase.transfer(daiLpPool.address, debaseReward.toString(), {from: policy});
+        let debaseRewardGons = debaseReward.mul(await getGonsPerFragments());
+
         lpSupply = new BN((await daiDebaseLp.totalSupply()).toString());
         let daiTotal = new BN((await dai.balanceOf(daiDebaseLp.address)).toString());
         let debaseTotal = new BN((await debase.balanceOf(daiDebaseLp.address)).toString());
@@ -167,7 +193,7 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
         assert.equal((await daiLpPool.lpDeposits(accounts[i + 1])).toString(), deposits[i].lp.toString());    
         assert.equal((await daiLpPool.totalLpLocked()).toString(), deposits[i].lp.toString());
         deposits[i].dai = daiTotal.sub(new BN((await dai.balanceOf(daiDebaseLp.address)).toString()));
-        deposits[i].debase = debaseTotal.sub(new BN((await debase.balanceOf(daiDebaseLp.address)).toString()));
+        deposits[i].debaseGonBalance = debaseTotal.sub(new BN((await debase.balanceOf(daiDebaseLp.address)))).mul(await getGonsPerFragments());
 
         let depositInfo = await daiLpPool.deposits(lastDepositId + i);
         assert.equal(depositInfo.owner, accounts[i + 1]);
@@ -220,6 +246,7 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
           deposits[i].dai.add(deposits[i].daiInterest).add(deposits[i].daiStakingReward).sub(daiFee).toString());
         assert.equal(
           (await dai.balanceOf(treasury)).toString(), oldDaiBalance.add(daiFee).toString());
+        assert.equal(new BN((await debase.balanceOf(accounts[i + 1])).toString()).gt(new BN(deposits[i].debaseGonBalance.div(await getGonsPerFragments()).toString())), true);
       }
     });
   });

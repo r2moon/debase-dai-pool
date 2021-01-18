@@ -449,15 +449,12 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     function _withdrawDebase(uint256 depositId) internal {
         _updateDebaseReward(depositId);
         uint256 reward = earned(depositId);
-        if (reward > 0) {
-            deposits[depositId].debaseReward = 0;
+        deposits[depositId].debaseReward = 0;
 
-            uint256 rewardToClaim =
-                debase.totalSupply().mul(reward).div(10**18);
+        uint256 rewardToClaim = debase.totalSupply().mul(reward).div(10**18);
 
-            debase.safeTransfer(deposits[depositId].owner, rewardToClaim.add(deposits[depositId].debaseGonAmount.div(_gonsPerFragment())));
-            debaseRewardDistributed = debaseRewardDistributed.add(reward);
-        }
+        debase.safeTransfer(deposits[depositId].owner, rewardToClaim.add(deposits[depositId].debaseGonAmount.div(_gonsPerFragment())));
+        debaseRewardDistributed = debaseRewardDistributed.add(reward);
     }
 
     function _emergencyWithdrawDebase(uint256 depositId) internal {
