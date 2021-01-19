@@ -27,7 +27,7 @@ UniswapV2Pair.setProvider(web3._provider);
 
 const decimals = new BN('18');
 
-contract('DaiLpPool Mainnet testing', (accounts) => {
+contract('DaiLpPool Mock testing', (accounts) => {
   let treasury = accounts[9];
   let policy = accounts[0];
   let daiLpPool;

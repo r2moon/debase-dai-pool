@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IUniswapV2Pair.sol";
 import "./interfaces/IDInterest.sol";
 import "./interfaces/IReward.sol";
@@ -24,7 +25,7 @@ interface IVesting {
     function accountVestList(address account, uint256 vestIdx) external view returns (Vest memory);
 }
 
-contract DaiLpPool is Ownable, IERC721Receiver {
+contract DaiLpPool is Ownable, IERC721Receiver, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -225,6 +226,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
     function deposit(uint256 amount)
         external
         enabled
+        nonReentrant
         returns (uint256)
     {
         require(totalLpLimitEnabled == false || totalLpLocked.add(amount) <= totalLpLimit, 'To much lp locked');
@@ -320,13 +322,13 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         emit onWithdraw(user, depositInfo.amount, depositId);
     }
 
-    function withdraw(uint256 depositId, uint256 fundingId) external
+    function withdraw(uint256 depositId, uint256 fundingId) external nonReentrant
     {
         _withdrawMphVested();
         _withdraw(msg.sender, depositId, fundingId);
     }
 
-    function multiWithdraw(uint256[] calldata depositIds, uint256[] calldata fundingIds) external {
+    function multiWithdraw(uint256[] calldata depositIds, uint256[] calldata fundingIds) external nonReentrant {
         require(depositIds.length == fundingIds.length, 'incorrect length');
         _withdrawMphVested();
         for (uint256 i = 0; i < depositIds.length; i += 1) {
@@ -334,7 +336,7 @@ contract DaiLpPool is Ownable, IERC721Receiver {
         }
     }
 
-    function emergencyWithdraw(uint256 depositId, uint256 fundingId) external enabled {
+    function emergencyWithdraw(uint256 depositId, uint256 fundingId) external enabled nonReentrant {
         require(allowEmergencyWithdraw, 'emergency withdraw disabled');
         require (depositId < depositLength, 'no deposit');
         _withdrawMphVested();
