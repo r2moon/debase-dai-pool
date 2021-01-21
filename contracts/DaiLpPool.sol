@@ -1,3 +1,19 @@
+// SPDX-License-Identifier: MIT
+/*
+
+██████╗ ███████╗██████╗  █████╗ ███████╗███████╗
+██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔════╝
+██║  ██║█████╗  ██████╔╝███████║███████╗█████╗  
+██║  ██║██╔══╝  ██╔══██╗██╔══██║╚════██║██╔══╝  
+██████╔╝███████╗██████╔╝██║  ██║███████║███████╗
+╚═════╝ ╚══════╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝
+                                               
+
+* Debase: Incentivizer.sol
+* Description:
+* Coded by: Ryuhei Matsuda
+*/
+
 pragma solidity >=0.6.6;
 pragma experimental ABIEncoderV2;
 
@@ -80,11 +96,13 @@ contract DaiLpPool is Ownable, IERC721Receiver, ReentrancyGuard {
     uint256 public totalLpLocked;
 
     mapping (uint256 => DepositInfo) public deposits;
+    mapping (address => uint256[]) public depositIds;
+
     mapping (address => uint256) public lpDeposits;
     mapping (uint256 => uint256) daiOffsetForMphStaking;   // DAI reward offset, times 1e12.
     uint256 public depositLength;
-    uint256 public daiFee = 30;
-    uint256 public mphFee = 30;
+    uint256 public daiFee = 300;
+    uint256 public mphFee = 300;
     uint256 public totalMphStaked;
     address public treasury;
 
@@ -255,12 +273,18 @@ contract DaiLpPool is Ownable, IERC721Receiver, ReentrancyGuard {
             mphVestingIdx: vestingIdx,
             withdrawed: false
         });
+        depositIds[msg.sender].push(depositLength);
+
         lastVestingIdx = vestingIdx.add(1);
         depositLength = depositLength.add(1);
 
         _updateDebaseReward(daiDepositId);
         emit onDeposit(msg.sender, amount, maturationTimestamp, depositLength.sub(1));
         return depositLength.sub(1);
+    }
+
+    function userDepositLength(address user) external view returns (uint256) {
+        return depositIds[user].length;
     }
 
     function _gonsPerFragment() internal view returns (uint256) {

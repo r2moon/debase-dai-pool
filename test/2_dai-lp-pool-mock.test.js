@@ -116,7 +116,7 @@ contract('DaiLpPool Mock testing', (accounts) => {
       config.blockDuration
     );
     await daiLpPool.setPoolEnabled(true, {from: policy});
-    await daiLpPool.setMphFee(20, {from: policy});
+    await daiLpPool.setMphFee(200, {from: policy});
   });
 
   describe('Test limitations', async () => {
@@ -134,6 +134,8 @@ contract('DaiLpPool Mock testing', (accounts) => {
       );
       await daiLpPool.setPoolEnabled(true);
       await daiLpPool.deposit(deposit, {from: accounts[8]});
+      assert.equal((await daiLpPool.userDepositLength(accounts[8])), 1);
+      assert.equal((await daiLpPool.depositIds(accounts[8], 0)), 0);
       lastDepositId += 1;
       await daiLpPool.setPoolEnabled(false);
       await time.increase(config.lockPeriod);
@@ -189,6 +191,9 @@ contract('DaiLpPool Mock testing', (accounts) => {
         await daiDebaseLp.transfer(accounts[i + 1], deposits[i].lp, {from: accounts[0]});
         await daiDebaseLp.approve(daiLpPool.address, deposits[i].lp, {from: accounts[i + 1]});
         await daiLpPool.deposit(deposits[i].lp, {from: accounts[i + 1]});
+        assert.equal((await daiLpPool.userDepositLength(accounts[i + 1])), 1);
+        assert.equal((await daiLpPool.depositIds(accounts[i + 1], 0)), lastDepositId + i);
+      
         assert.equal((await daiDebaseLp.totalSupply()).toString(), (lpSupply.sub(deposits[i].lp)).toString());
         assert.equal((await daiLpPool.lpDeposits(accounts[i + 1])).toString(), deposits[i].lp.toString());    
         assert.equal((await daiLpPool.totalLpLocked()).toString(), deposits[i].lp.toString());
@@ -234,13 +239,13 @@ contract('DaiLpPool Mock testing', (accounts) => {
         assert.equal(depositInfo.withdrawed, true);
 
         let mphRewardRemain = mphReward.sub(mphReward.mul(new BN('30')).div(new BN('100')));
-        let mphFee = mphRewardRemain.mul(new BN('2')).div(new BN('100'));
+        let mphFee = mphRewardRemain.mul(new BN('200')).div(new BN('1000'));
 
         assert.equal((await mph.balanceOf(accounts[i + 1])).toString(), mphRewardRemain.sub(mphFee).toString());
 
         assert.equal((await mph.balanceOf(treasury)).toString(), oldMphBalance.add(mphFee).toString());
 
-        let daiFee = deposits[i].daiInterest.add(deposits[i].daiStakingReward).mul(new BN('3')).div(new BN('100'));
+        let daiFee = deposits[i].daiInterest.add(deposits[i].daiStakingReward).mul(new BN('300')).div(new BN('1000'));
         assert.equal(
           (await dai.balanceOf(accounts[i + 1])).toString(),
           deposits[i].dai.add(deposits[i].daiInterest).add(deposits[i].daiStakingReward).sub(daiFee).toString());
