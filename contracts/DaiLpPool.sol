@@ -9,8 +9,9 @@
 ╚═════╝ ╚══════╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝
                                                
 
-* Debase: Incentivizer.sol
+* Debase: DaiLpPool.sol
 * Description:
+* Farm DEBASE-DAI Uni V2 LP token to get DEBASE, DAI, MPH rewards.
 * Coded by: Ryuhei Matsuda
 */
 
