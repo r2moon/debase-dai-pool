@@ -328,9 +328,7 @@ contract DaiLpPool is Ownable, IERC721Receiver, ReentrancyGuard {
         dai.transfer(treasury, mphStakingDaiReward);
     }
 
-    function _withdraw(address user, uint256 depositId, uint256 fundingId)
-        internal
-        enabled
+    function _withdraw(address user, uint256 depositId, uint256 fundingId) internal
     {
         require (depositId < depositLength, 'no deposit');
         DepositInfo storage depositInfo = deposits[depositId];
@@ -361,7 +359,7 @@ contract DaiLpPool is Ownable, IERC721Receiver, ReentrancyGuard {
         }
     }
 
-    function emergencyWithdraw(uint256 depositId, uint256 fundingId) external enabled nonReentrant {
+    function emergencyWithdraw(uint256 depositId, uint256 fundingId) external nonReentrant {
         require(allowEmergencyWithdraw, 'emergency withdraw disabled');
         require (depositId < depositLength, 'no deposit');
         _withdrawMphVested();
