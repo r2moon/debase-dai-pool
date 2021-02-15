@@ -1,21 +1,20 @@
 const { expectRevert, time } = require('@openzeppelin/test-helpers');
 
-const config = require('../config.json');
-const DaiLpPool = artifacts.require("DaiLpPool");
+const config = require('../../config.json');
+const DaiLpPoolV2 = artifacts.require("DaiLpPoolV2");
 
-contract('DaiLpPool basic testing', (accounts) => {
+contract('DaiLpPoolV2 basic testing', (accounts) => {
   let treasury = accounts[9];
   let daiLpPool;
 
   before('Get contract references', async () => {
-    daiLpPool = await DaiLpPool.new(
+    daiLpPool = await DaiLpPoolV2.new(
       config.debaseDaiPair,
       config.dai,
       config.debase,
       config.mph,
       config.policy,
       config.daiFixedPool,
-      config.mphStakingPool,
       config.mphVesting,
       config.lockPeriod,
       treasury,
@@ -30,9 +29,6 @@ contract('DaiLpPool basic testing', (accounts) => {
     });
     it('Dai fixed pool should be 88mph dai fixed pool', async function() {
       assert.equal(await daiLpPool.daiFixedPool(), config.daiFixedPool);
-    });
-    it('Mph staking pool should be 88mph staking pool', async function() {
-      assert.equal(await daiLpPool.mphStakePool(), config.mphStakingPool);
     });
     it('Mph vesting should be 88mph vesting', async function() {
       assert.equal(await daiLpPool.mphVesting(), config.mphVesting);
@@ -97,8 +93,8 @@ contract('DaiLpPool basic testing', (accounts) => {
     it('Check poolEnabled', async function() {
       assert.equal(await daiLpPool.poolEnabled(), false);
     });
-    it('Check allowEmergencyWithdraw', async function() {
-      assert.equal(await daiLpPool.allowEmergencyWithdraw(), false);
+    it('Check mphTakeBackMultiplier', async function() {
+      assert.equal((await daiLpPool.mphTakeBackMultiplier()).toString(), "300000000000000000");
     });
   });
 
@@ -221,15 +217,13 @@ contract('DaiLpPool basic testing', (accounts) => {
       await daiLpPool.setLockPeriod(10, {from: accounts[0]});
       assert.equal(await daiLpPool.lockPeriod(), 10);
     });
-    it('check setAllowEmergencyWithdraw', async function() {
+    it('check setMphTakeBackMultiplier', async function() {
       await expectRevert(
-        daiLpPool.setAllowEmergencyWithdraw(true, {from: accounts[2]}),
+        daiLpPool.setMphTakeBackMultiplier("1000000000000000000", {from: accounts[2]}),
         'Ownable: caller is not the owner'
       );
-      await daiLpPool.setAllowEmergencyWithdraw(true, {from: accounts[0]});
-      assert.equal(await daiLpPool.allowEmergencyWithdraw(), true);
-      await daiLpPool.setAllowEmergencyWithdraw(false, {from: accounts[0]});
-      assert.equal(await daiLpPool.allowEmergencyWithdraw(), false);
+      await daiLpPool.setMphTakeBackMultiplier("1000000000000000000", {from: accounts[0]});
+      assert.equal((await daiLpPool.mphTakeBackMultiplier()).toString(), "1000000000000000000");
     });
   });
 });

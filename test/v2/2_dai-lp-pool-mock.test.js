@@ -2,8 +2,8 @@ const BN = require('bn.js');
 const truffleContract = require('@truffle/contract');
 
 const { expectRevert, send, balance,  time } = require('@openzeppelin/test-helpers');
-const config = require('../config.json');
-const DaiLpPool = artifacts.require("DaiLpPool");
+const config = require('../../config.json');
+const DaiLpPoolV2 = artifacts.require("DaiLpPoolV2");
 const Debase = artifacts.require("Debase");
 
 const IERC20 = artifacts.require("IERC20");
@@ -11,7 +11,6 @@ const TestERC20 = artifacts.require("TestERC20");
 const Vesting = artifacts.require("Vesting");
 const FakeMphMinter = artifacts.require("FakeMphMinter");
 const FakeDInterest = artifacts.require("FakeDInterest");
-const FakeStakingPool = artifacts.require("FakeStakingPool");
 
 const UniswapV2FactoryJson = require("@uniswap/v2-core/build/UniswapV2Factory");
 const UniswapV2Router02Json = require("@uniswap/v2-periphery/build/UniswapV2Router02");
@@ -27,10 +26,12 @@ UniswapV2Pair.setProvider(web3._provider);
 
 const decimals = new BN('18');
 
-contract('DaiLpPool Mock testing', (accounts) => {
+contract('DaiLpPoolV2 Mock testing', (accounts) => {
   let treasury = accounts[9];
   let policy = accounts[0];
   let daiLpPool;
+  let dInterest;
+  let vesting;
   let dai;
   let debase;
   let mph;
@@ -65,17 +66,11 @@ contract('DaiLpPool Mock testing', (accounts) => {
     debase = await Debase.new();
     mph = await TestERC20.new((new BN('10000000')).mul((new BN('10')).pow(decimals)).toString(), "Test Mph", "MPH");
     vesting = await Vesting.new(mph.address, {from: accounts[0]});
-    mphMinter = await FakeMphMinter.new(mph.address, vesting.address, {from: accounts[0]});
+    const mphMinter = await FakeMphMinter.new(mph.address, vesting.address, {from: accounts[0]});
     dInterest = await FakeDInterest.new(dai.address, mphMinter.address, {from: accounts[0]});
-    mphStaking = await FakeStakingPool.new(mph.address, dai.address, {from: accounts[0]});
   
     await dai.approve(
       dInterest.address,
-      (new BN('10000000')).mul((new BN('10')).pow(decimals)).toString(),
-      {from: accounts[0]}
-    );
-    await dai.approve(
-      mphStaking.address,
       (new BN('10000000')).mul((new BN('10')).pow(decimals)).toString(),
       {from: accounts[0]}
     );
@@ -101,14 +96,13 @@ contract('DaiLpPool Mock testing', (accounts) => {
     daiDebaseLp = await IERC20.at(lpAddress);
     lpSupply = new BN((await daiDebaseLp.totalSupply()).toString());
 
-    daiLpPool = await DaiLpPool.new(
+    daiLpPool = await DaiLpPoolV2.new(
       daiDebaseLp.address,
       dai.address,
       debase.address,
       mph.address,
       policy,
       dInterest.address,
-      mphStaking.address,
       vesting.address,
       config.lockPeriod,
       treasury,
@@ -137,13 +131,7 @@ contract('DaiLpPool Mock testing', (accounts) => {
       assert.equal((await daiLpPool.userDepositLength(accounts[8])), 1);
       assert.equal((await daiLpPool.depositIds(accounts[8], 0)), 0);
       lastDepositId += 1;
-      await daiLpPool.setPoolEnabled(false);
       await time.increase(config.lockPeriod);
-      await expectRevert(
-        daiLpPool.withdraw(0, 0, {from: accounts[8]}),
-        "Pool isn't enabled"
-      );
-      await daiLpPool.setPoolEnabled(true);
       await daiLpPool.withdraw(0, 0, {from: accounts[8]});
     });
 
@@ -183,7 +171,6 @@ contract('DaiLpPool Mock testing', (accounts) => {
         await daiLpPool.checkStabilizerAndGetReward("1", "1", "1", bal.toString())
         let debaseReward = bal.mul(new BN(config.debaseRewardPercentage)).div((new BN('10')).pow(decimals));
         await debase.transfer(daiLpPool.address, debaseReward.toString(), {from: policy});
-        let debaseRewardGons = debaseReward.mul(await getGonsPerFragments());
 
         lpSupply = new BN((await daiDebaseLp.totalSupply()).toString());
         let daiTotal = new BN((await dai.balanceOf(daiDebaseLp.address)).toString());
@@ -215,20 +202,13 @@ contract('DaiLpPool Mock testing', (accounts) => {
         assert.equal((await mph.balanceOf(vesting.address)).toString(), mphReward.toString());
 
         deposits[i].daiInterest = (new BN('100')).mul((new BN('10')).pow(decimals));
-        deposits[i].daiStakingReward = (new BN('50')).mul((new BN('10')).pow(decimals));
         await dInterest.setNextInterest(deposits[i].daiInterest);
-        await mphStaking.setNextReward(deposits[i].daiStakingReward);
 
         await time.increase(config.lockPeriod);
         const oldMphBalance = new BN((await mph.balanceOf(treasury)).toString());
         const oldDaiBalance = new BN((await dai.balanceOf(treasury)).toString());
         await daiLpPool.withdraw(lastDepositId + i, 0, {from: accounts[i + 1]});
 
-        deposits[i].daiStakingReward = deposits[i].daiStakingReward
-          .mul(new BN('1000000000000'))
-          .div(mphReward)
-          .mul(mphReward)
-          .div(new BN('1000000000000'))
         depositInfo = await daiLpPool.deposits(lastDepositId + i);
         assert.equal(depositInfo.owner, accounts[i + 1]);
         assert.equal(depositInfo.amount.toString(), deposits[i].lp.toString());
@@ -245,10 +225,10 @@ contract('DaiLpPool Mock testing', (accounts) => {
 
         assert.equal((await mph.balanceOf(treasury)).toString(), oldMphBalance.add(mphFee).toString());
 
-        let daiFee = deposits[i].daiInterest.add(deposits[i].daiStakingReward).mul(new BN('300')).div(new BN('1000'));
+        let daiFee = deposits[i].daiInterest.mul(new BN('300')).div(new BN('1000'));
         assert.equal(
           (await dai.balanceOf(accounts[i + 1])).toString(),
-          deposits[i].dai.add(deposits[i].daiInterest).add(deposits[i].daiStakingReward).sub(daiFee).toString());
+          deposits[i].dai.add(deposits[i].daiInterest).sub(daiFee).toString());
         assert.equal(
           (await dai.balanceOf(treasury)).toString(), oldDaiBalance.add(daiFee).toString());
         assert.equal(new BN((await debase.balanceOf(accounts[i + 1])).toString()).gt(new BN(deposits[i].debaseGonBalance.div(await getGonsPerFragments()).toString())), true);

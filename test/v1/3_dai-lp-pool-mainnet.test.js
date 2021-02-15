@@ -1,8 +1,8 @@
 const BN = require('bn.js');
 const truffleContract = require('@truffle/contract');
 
-const { expectRevert, send, balance,  time } = require('@openzeppelin/test-helpers');
-const config = require('../config.json');
+const { time } = require('@openzeppelin/test-helpers');
+const config = require('../../config.json');
 const DaiLpPool = artifacts.require("DaiLpPool");
 const Debase = artifacts.require("Debase");
 
@@ -27,19 +27,17 @@ contract('DaiLpPool Mainnet testing', (accounts) => {
   let daiLpPool;
   let dai;
   let debase;
-  let mph;
   let uniFactory;
   let uniRouter02;
   let daiDebaseLp;
   let lpSupply;
 
   let depositAmounts = [
-    (new BN('10')).mul((new BN('10')).pow(decimals))
+    (new BN('100')).mul((new BN('10')).pow(decimals))
   ]
   before('Get contract references', async () => {
     dai = await IERC20.at(config.dai);
     debase = await Debase.new();
-    mph = await IERC20.at(config.mph);
     uniFactory = await UniswapV2Factory.at(config.uniFactory);
     uniRouter02 = await UniswapV2Router02.new(config.uniFactory, config.weth, {from: accounts[0]});
     await uniRouter02.swapExactETHForTokens(
