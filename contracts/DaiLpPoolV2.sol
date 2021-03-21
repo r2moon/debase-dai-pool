@@ -308,17 +308,6 @@ contract DaiLpPoolV2 is Ownable, IERC721Receiver, ReentrancyGuard {
         }
     }
 
-    function withdrawMphVested(uint256 depositId) external nonReentrant 
-    {
-        _withdrawMphVested(depositId);
-    }
-
-    function multiWithdrawMphVested(uint256[] calldata depositIds) external nonReentrant {
-        for (uint256 i = 0; i < depositIds.length; i += 1) {
-            _withdrawMphVested(depositIds[i]);
-        }
-    }
-
     /**
      * @notice Function to set how much reward the stabilizer will request
      */
